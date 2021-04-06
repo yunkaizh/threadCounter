@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
+	"regexp"
 	"runtime"
 	"strconv"
 	"sync"
@@ -13,6 +17,40 @@ import (
 var wg sync.WaitGroup
 var cnt int
 var stop int32
+
+func getThreadCount() int {
+
+	// get the pid of the process
+	pid := os.Getpid()
+
+	// construct command - cat /proc/<pid>/status | grep Threads
+	option := "/proc/" + fmt.Sprint(pid) + "/status"
+	cmd1 := exec.Command("cat", option)
+	cmd2 := exec.Command("grep", "Threads")
+
+	// construct the pipe
+	r, w := io.Pipe()
+	cmd1.Stdout = w
+	cmd2.Stdin = r
+
+	// get the output from the commands
+	var b2 bytes.Buffer
+	cmd2.Stdout = &b2
+
+	cmd1.Start()
+	cmd2.Start()
+	cmd1.Wait()
+	w.Close()
+	cmd2.Wait()
+
+	// Use regular expression to extract the thread count reported by the OS
+	reg, _ := regexp.Compile("Threads:\t+([0-9]+)")
+	rs := reg.FindStringSubmatch(b2.String())
+	cnt, _ := strconv.Atoi(rs[1])
+	fmt.Println(cnt)
+
+	return cnt
+}
 
 func work() {
 	// Do nothing..
@@ -29,7 +67,7 @@ func count() {
 		}
 
 		// update the num of go routines
-		var cur int = runtime.NumGoroutine()
+		var cur int = getThreadCount()
 		if cur > cnt {
 			cnt = cur
 		}
